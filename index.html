@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>追单诊断</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg: #F5F6F8; --surface: #FFFFFF; --border: #E8EAED; --border-strong: #D1D5DB;
+    --text: #111827; --text-2: #6B7280; --text-3: #9CA3AF;
+    --blue: #1D6EE8; --blue-bg: #EEF4FE; --blue-d: #1558C0;
+    --red: #C0392B; --red-bg: #FEF2F0;
+    --orange: #9A4F0E; --orange-bg: #FEF5E7;
+    --green: #0E7E5A; --green-bg: #EDFAF4;
+    --gray-bg: #F3F4F6; --radius: 10px;
+    --shadow: 0 1px 3px rgba(0,0,0,.07),0 1px 2px rgba(0,0,0,.04);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system,'PingFang SC','Microsoft YaHei',sans-serif; background:var(--bg); color:var(--text); font-size:14px; line-height:1.6; min-height:100vh; }
+
+  .nav { background:var(--surface); border-bottom:1px solid var(--border); padding:0 24px; height:52px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; }
+  .nav-brand { display:flex; align-items:center; gap:10px; font-size:15px; font-weight:700; }
+  .nav-dot { width:8px; height:8px; border-radius:50%; background:var(--blue); }
+  .nav-tag { font-size:11px; font-weight:500; color:var(--text-2); background:var(--gray-bg); padding:2px 8px; border-radius:20px; }
+
+  .main { max-width:900px; margin:0 auto; padding:28px 20px 60px; }
+
+  /* 输入模式切换 */
+  .mode-tabs { display:flex; background:var(--gray-bg); border-radius:8px; padding:3px; margin-bottom:14px; gap:3px; }
+  .mode-tab { flex:1; padding:7px 0; text-align:center; font-size:12px; font-weight:500; color:var(--text-2); cursor:pointer; border-radius:6px; border:none; background:none; font-family:inherit; transition:all .15s; }
+  .mode-tab.active { background:var(--surface); color:var(--text); box-shadow:var(--shadow); font-weight:600; }
+
+  .input-card { background:var(--surface); border-radius:var(--radius); border:1px solid var(--border); box-shadow:var(--shadow); overflow:hidden; margin-bottom:16px; }
+  .input-header { padding:14px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+  .input-title { font-size:13px; font-weight:600; }
+  .input-hint { font-size:12px; color:var(--text-3); }
+  textarea { width:100%; border:none; outline:none; resize:none; padding:16px 18px; font-family:inherit; font-size:13px; color:var(--text); line-height:1.7; background:var(--surface); min-height:200px; }
+  textarea::placeholder { color:var(--text-3); }
+  .input-footer { padding:12px 18px; border-top:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; background:var(--gray-bg); }
+  .char-count { font-size:12px; color:var(--text-3); }
+
+  /* 文件上传区 */
+  .upload-zone { display:none; padding:40px 20px; text-align:center; border:2px dashed var(--border-strong); margin:16px 18px; border-radius:8px; cursor:pointer; transition:all .2s; background:var(--gray-bg); }
+  .upload-zone:hover, .upload-zone.drag { border-color:var(--blue); background:var(--blue-bg); }
+  .upload-zone.active { display:block; }
+  .upload-icon { font-size:32px; margin-bottom:10px; }
+  .upload-title { font-size:14px; font-weight:600; color:var(--text); margin-bottom:4px; }
+  .upload-desc { font-size:12px; color:var(--text-2); margin-bottom:14px; }
+  .upload-types { display:flex; gap:6px; justify-content:center; flex-wrap:wrap; }
+  .upload-type { font-size:11px; font-weight:500; padding:2px 8px; border-radius:20px; background:var(--surface); border:1px solid var(--border); color:var(--text-2); }
+  input[type=file] { display:none; }
+
+  /* 文件预览 */
+  .file-preview { display:none; padding:14px 18px; }
+  .file-preview.show { display:block; }
+  .file-info { display:flex; align-items:center; gap:10px; background:var(--green-bg); border-radius:8px; padding:10px 14px; margin-bottom:10px; }
+  .file-icon { font-size:20px; }
+  .file-name { font-size:13px; font-weight:600; color:var(--green); flex:1; }
+  .file-meta { font-size:12px; color:var(--text-2); }
+  .preview-table { width:100%; border-collapse:collapse; font-size:12px; }
+  .preview-table th { background:var(--gray-bg); padding:6px 10px; text-align:left; font-weight:600; color:var(--text-2); border-bottom:1px solid var(--border); }
+  .preview-table td { padding:6px 10px; border-bottom:1px solid var(--border); color:var(--text); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .preview-note { font-size:11px; color:var(--text-3); margin-top:6px; }
+
+  .btn-primary { background:var(--blue); color:#fff; border:none; border-radius:8px; padding:9px 20px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; display:flex; align-items:center; gap:7px; transition:background .15s,opacity .15s; }
+  .btn-primary:hover { background:var(--blue-d); }
+  .btn-primary:disabled { opacity:.5; cursor:not-allowed; }
+  .btn-secondary { background:transparent; color:var(--text-2); border:1px solid var(--border-strong); border-radius:8px; padding:7px 14px; font-size:12px; font-weight:500; cursor:pointer; font-family:inherit; transition:all .15s; }
+  .btn-secondary:hover { color:var(--text); border-color:var(--text-2); }
+  .btn-link { background:none; border:none; color:var(--blue); font-size:12px; cursor:pointer; font-family:inherit; padding:0; text-decoration:underline; }
+
+  .loading { display:none; background:var(--surface); border-radius:var(--radius); border:1px solid var(--border); padding:40px; text-align:center; box-shadow:var(--shadow); margin-bottom:16px; }
+  .loading.show { display:block; }
+  .spinner { width:32px; height:32px; border:3px solid var(--border); border-top-color:var(--blue); border-radius:50%; animation:spin .8s linear infinite; margin:0 auto 12px; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .loading-text { font-size:13px; color:var(--text-2); }
+  .loading-step { font-size:12px; color:var(--text-3); margin-top:4px; }
+
+  .result { display:none; }
+  .result.show { display:block; }
+
+  .step-cards { display:flex; flex-direction:column; gap:10px; margin-bottom:16px; }
+  .step-card { background:var(--surface); border-radius:var(--radius); border:1px solid var(--border); box-shadow:var(--shadow); overflow:hidden; }
+  .step-card-header { padding:12px 16px; display:flex; align-items:center; gap:10px; border-bottom:1px solid var(--border); }
+  .step-num { width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; flex-shrink:0; }
+  .step-card-title { font-size:13px; font-weight:600; flex:1; }
+  .verdict { font-size:12px; font-weight:600; padding:3px 10px; border-radius:20px; display:flex; align-items:center; gap:4px; }
+  .verdict-ok { background:var(--green-bg); color:var(--green); }
+  .verdict-warn { background:var(--red-bg); color:var(--red); }
+  .verdict-neutral { background:var(--orange-bg); color:var(--orange); }
+  .step-card-body { padding:14px 16px; }
+  .detail-row { display:flex; gap:8px; align-items:baseline; margin-bottom:8px; font-size:13px; }
+  .detail-row:last-child { margin-bottom:0; }
+  .detail-label { font-size:11px; font-weight:600; color:var(--text-3); width:72px; flex-shrink:0; padding-top:2px; }
+  .detail-value { color:var(--text); line-height:1.6; flex:1; }
+  .quote { background:var(--gray-bg); border-left:3px solid var(--border-strong); border-radius:0 6px 6px 0; padding:8px 12px; font-size:12px; color:var(--text-2); line-height:1.6; margin-top:6px; font-style:italic; }
+  .tag { display:inline-block; font-size:11px; font-weight:600; padding:2px 8px; border-radius:20px; }
+  .tag-blue { background:var(--blue-bg); color:var(--blue-d); }
+  .tag-red { background:var(--red-bg); color:var(--red); }
+  .tag-orange { background:var(--orange-bg); color:var(--orange); }
+  .tag-green { background:var(--green-bg); color:var(--green); }
+  .tag-gray { background:var(--gray-bg); color:var(--text-2); }
+  .tag-purple { background:#F0EAF7; color:#5B2D8E; }
+
+  .action-card { background:var(--surface); border-radius:var(--radius); border:1px solid var(--border); box-shadow:var(--shadow); overflow:hidden; margin-bottom:16px; }
+  .action-header { padding:12px 16px; background:var(--blue-bg); border-bottom:1px solid #D4E6FC; display:flex; align-items:center; justify-content:space-between; }
+  .action-title { font-size:13px; font-weight:600; color:var(--blue-d); }
+  .action-body { padding:14px 16px; }
+  .action-text { font-size:13px; color:var(--text); line-height:1.8; background:var(--gray-bg); border-radius:8px; padding:12px 14px; margin-bottom:10px; white-space:pre-wrap; }
+  .action-footer { display:flex; gap:8px; justify-content:flex-end; }
+
+  .ledger-card { background:var(--surface); border-radius:var(--radius); border:1px solid var(--border); box-shadow:var(--shadow); overflow:hidden; margin-bottom:16px; }
+  .ledger-header { padding:12px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+  .ledger-title { font-size:13px; font-weight:600; }
+  .ledger-grid { display:grid; grid-template-columns:repeat(3,1fr); }
+  .ledger-cell { padding:12px 16px; border-right:1px solid var(--border); border-bottom:1px solid var(--border); }
+  .ledger-cell:nth-child(3n) { border-right:none; }
+  .ledger-key { font-size:11px; font-weight:600; color:var(--text-3); margin-bottom:4px; }
+  .ledger-val { font-size:12px; color:var(--text); line-height:1.5; }
+
+  .error-card { display:none; background:var(--red-bg); border:1px solid #F5C6C1; border-radius:var(--radius); padding:16px 18px; font-size:13px; color:var(--red); margin-bottom:16px; }
+  .error-card.show { display:block; }
+
+  .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(60px); background:#1F2937; color:#fff; font-size:13px; padding:10px 18px; border-radius:8px; transition:transform .25s ease; pointer-events:none; z-index:999; }
+  .toast.show { transform:translateX(-50%) translateY(0); }
+
+  @media(max-width:600px){
+    .ledger-grid{grid-template-columns:1fr 1fr;}
+    .ledger-cell:nth-child(3n){border-right:1px solid var(--border);}
+    .ledger-cell:nth-child(2n){border-right:none;}
+  }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-brand"><div class="nav-dot"></div>追单诊断</div>
+  <span class="nav-tag">DBC职梦 · 新媒体视频组</span>
+</nav>
+
+<div class="main">
+
+  <!-- 模式切换 -->
+  <div class="mode-tabs">
+    <button class="mode-tab active" onclick="switchMode('text',this)">📝 粘贴文字</button>
+    <button class="mode-tab" onclick="switchMode('file',this)">📊 上传 Excel / CSV</button>
+  </div>
+
+  <div class="input-card">
+    <div class="input-header">
+      <span class="input-title" id="inputTitle">粘贴聊天记录</span>
+      <span class="input-hint" id="inputHint">支持微信聊天记录导出格式</span>
+    </div>
+
+    <!-- 文字输入 -->
+    <div id="textMode">
+      <textarea id="chatInput" placeholder="把销售和用户的聊天记录粘贴进来……
+
+格式示例：
+[2026-07-27 10:32] 家长：你好，孩子快毕业了想了解一下你们的服务
+[2026-07-27 10:35] 销售：您好！请问孩子是哪个学校……
+
+不需要清理格式，直接粘贴即可。"></textarea>
+    </div>
+
+    <!-- 文件上传 -->
+    <div id="fileMode" style="display:none">
+      <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
+        <div class="upload-icon">📂</div>
+        <div class="upload-title">点击上传，或拖拽文件到这里</div>
+        <div class="upload-desc">支持微信客服系统导出的消息存档文件</div>
+        <div class="upload-types">
+          <span class="upload-type">Excel .xlsx</span>
+          <span class="upload-type">Excel .xls</span>
+          <span class="upload-type">CSV .csv</span>
+          <span class="upload-type">TXT .txt</span>
+        </div>
+      </div>
+      <input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.txt" onchange="handleFile(this.files[0])">
+      <div class="file-preview" id="filePreview"></div>
+    </div>
+
+    <!-- 图片说明 -->
+    <div id="imgNote" style="display:none;padding:10px 18px;font-size:12px;color:var(--text-3);border-top:1px solid var(--border);background:var(--gray-bg)">
+      💡 图片/表情/文件消息会标注为 [图片]、[表情]、[文件]，无法分析内容
+    </div>
+
+    <div class="input-footer">
+      <span class="char-count" id="charCount">0 字</span>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn-secondary" onclick="clearAll()">清空</button>
+        <button class="btn-primary" id="analyzeBtn" onclick="analyze()">
+          <span>开始诊断</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <div class="loading-text">正在分析聊天记录……</div>
+    <div class="loading-step" id="loadingStep">识别销售跟进动作</div>
+  </div>
+
+  <div class="error-card" id="errorCard"></div>
+
+  <div class="result" id="result">
+    <div class="step-cards" id="stepCards"></div>
+    <div class="action-card" id="actionCard" style="display:none">
+      <div class="action-header">
+        <span class="action-title">📤 建议同步给销售的话</span>
+        <span style="font-size:12px;color:var(--blue-d)">确认后直接复制发送</span>
+      </div>
+      <div class="action-body">
+        <div class="action-text" id="actionText"></div>
+        <div class="action-footer">
+          <button class="btn-secondary" onclick="copyAction()">复制话术</button>
+        </div>
+      </div>
+    </div>
+    <div class="ledger-card" id="ledgerCard" style="display:none">
+      <div class="ledger-header">
+        <span class="ledger-title">📋 台账记录（自动生成）</span>
+        <button class="btn-secondary" onclick="copyLedger()">复制记录</button>
+      </div>
+      <div class="ledger-grid" id="ledgerGrid"></div>
+    </div>
+    <div style="text-align:center;margin-top:8px">
+      <button class="btn-secondary" onclick="resetResult()">← 重新诊断</button>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast">已复制</div>
+
+<script>
+let currentMode = 'text';
+let parsedChatText = '';
+
+// 模式切换
+function switchMode(mode, btn) {
+  currentMode = mode;
+  document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  if (mode === 'text') {
+    document.getElementById('textMode').style.display = 'block';
+    document.getElementById('fileMode').style.display = 'none';
+    document.getElementById('imgNote').style.display = 'none';
+    document.getElementById('inputTitle').textContent = '粘贴聊天记录';
+    document.getElementById('inputHint').textContent = '支持微信聊天记录导出格式';
+    parsedChatText = '';
+  } else {
+    document.getElementById('textMode').style.display = 'none';
+    document.getElementById('fileMode').style.display = 'block';
+    document.getElementById('uploadZone').classList.add('active');
+    document.getElementById('imgNote').style.display = 'block';
+    document.getElementById('inputTitle').textContent = '上传聊天记录文件';
+    document.getElementById('inputHint').textContent = '微信客服消息存档 Excel';
+  }
+  updateCharCount();
+}
+
+// 拖拽
+function onDragOver(e) { e.preventDefault(); document.getElementById('uploadZone').classList.add('drag'); }
+function onDragLeave(e) { document.getElementById('uploadZone').classList.remove('drag'); }
+function onDrop(e) {
+  e.preventDefault();
+  document.getElementById('uploadZone').classList.remove('drag');
+  const file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
+}
+
+// 文件处理
+function handleFile(file) {
+  if (!file) return;
+  const ext = file.name.split('.').pop().toLowerCase();
+  const reader = new FileReader();
+
+  if (ext === 'xlsx' || ext === 'xls') {
+    reader.onload = e => parseExcel(e.target.result, file.name);
+    reader.readAsArrayBuffer(file);
+  } else if (ext === 'csv') {
+    reader.onload = e => parseCsv(e.target.result, file.name);
+    reader.readAsText(file, 'UTF-8');
+  } else if (ext === 'txt') {
+    reader.onload = e => { parsedChatText = e.target.result; showFilePreview(file.name, '纯文字格式', parsedChatText.split('\n').length + '行', null); updateCharCount(); };
+    reader.readAsText(file, 'UTF-8');
+  } else {
+    showError('不支持的文件格式，请上传 xlsx / xls / csv / txt');
+  }
+}
+
+function parseExcel(buffer, filename) {
+  try {
+    const wb = XLSX.read(buffer, { type: 'arraybuffer' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+    if (rows.length < 2) { showError('Excel文件内容为空'); return; }
+
+    const headers = rows[0].map(h => String(h).trim());
+    // 自动识别列：时间、发送人昵称、接收人昵称、消息类型、消息内容
+    const colTime = findCol(headers, ['消息时间','时间','发送时间']);
+    const colSender = findCol(headers, ['发送人昵称','发送人','sender_name','发送者']);
+    const colReceiver = findCol(headers, ['接收人昵称','接收人','receiver_name','接收者']);
+    const colType = findCol(headers, ['消息类型','type','类型']);
+    const colContent = findCol(headers, ['消息内容','内容','content','文本']);
+
+    const lines = [];
+    const preview = [];
+
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const time = colTime >= 0 ? String(row[colTime] || '').trim() : '';
+      const sender = colSender >= 0 ? String(row[colSender] || '').trim() : '';
+      const msgType = colType >= 0 ? String(row[colType] || '').toLowerCase().trim() : 'text';
+      let content = colContent >= 0 ? String(row[colContent] || '').trim() : '';
+
+      // 解析JSON格式的消息内容
+      if (content.startsWith('{')) {
+        try {
+          const obj = JSON.parse(content);
+          content = obj.content || obj.text || obj.msg || '';
+        } catch(e) {}
+      }
+
+      // 非文字消息类型标注
+      let displayContent = content;
+      if (msgType === 'emotion' || msgType === 'emoji') displayContent = '[表情]';
+      else if (msgType === 'image' || msgType === 'img') displayContent = '[图片]';
+      else if (msgType === 'file') displayContent = '[文件]';
+      else if (msgType === 'video') displayContent = '[视频]';
+      else if (msgType === 'voice' || msgType === 'audio') displayContent = '[语音]';
+      else if (!displayContent) displayContent = '[' + msgType + ']';
+
+      if (sender && displayContent) {
+        const line = (time ? `[${time}] ` : '') + sender + '：' + displayContent;
+        lines.push(line);
+        if (preview.length < 5 && msgType === 'text' && displayContent !== '[表情]') {
+          preview.push({ time, sender, content: displayContent });
+        }
+      }
+    }
+
+    parsedChatText = lines.join('\n');
+    const msgCount = lines.length;
+    const textCount = lines.filter(l => !l.includes('[表情]') && !l.includes('[图片]') && !l.includes('[文件]')).length;
+    showFilePreview(filename, `共${msgCount}条消息，其中文字${textCount}条`, msgCount + '条', preview);
+    updateCharCount();
+
+  } catch(e) {
+    showError('Excel解析失败：' + e.message);
+  }
+}
+
+function parseCsv(text, filename) {
+  try {
+    const lines = text.split('\n').filter(l => l.trim());
+    const rows = lines.map(l => l.split(',').map(c => c.replace(/^"|"$/g, '').trim()));
+    const headers = rows[0];
+    const colTime = findCol(headers, ['消息时间','时间']);
+    const colSender = findCol(headers, ['发送人昵称','发送人']);
+    const colContent = findCol(headers, ['消息内容','内容']);
+    const result = [];
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const time = colTime >= 0 ? row[colTime] : '';
+      const sender = colSender >= 0 ? row[colSender] : '';
+      const content = colContent >= 0 ? row[colContent] : '';
+      if (sender && content) result.push((time ? `[${time}] ` : '') + sender + '：' + content);
+    }
+    parsedChatText = result.join('\n');
+    showFilePreview(filename, `共${result.length}条消息`, result.length + '条', null);
+    updateCharCount();
+  } catch(e) {
+    showError('CSV解析失败：' + e.message);
+  }
+}
+
+function findCol(headers, candidates) {
+  for (const c of candidates) {
+    const idx = headers.findIndex(h => h.includes(c));
+    if (idx >= 0) return idx;
+  }
+  return -1;
+}
+
+function showFilePreview(filename, desc, count, previewRows) {
+  const el = document.getElementById('filePreview');
+  let html = `<div class="file-info">
+    <span class="file-icon">📊</span>
+    <span class="file-name">${filename}</span>
+    <span class="file-meta">${desc}</span>
+    <button class="btn-link" onclick="clearFile()">重新上传</button>
+  </div>`;
+
+  if (previewRows && previewRows.length > 0) {
+    html += `<div style="font-size:11px;font-weight:600;color:var(--text-3);margin-bottom:6px">前几条预览</div>
+    <table class="preview-table">
+      <tr><th>时间</th><th>发送人</th><th>内容</th></tr>
+      ${previewRows.map(r => `<tr><td>${r.time}</td><td>${r.sender}</td><td>${r.content}</td></tr>`).join('')}
+    </table>
+    <div class="preview-note">· 图片/表情/文件消息已标注，不计入文字分析</div>`;
+  }
+
+  el.innerHTML = html;
+  el.classList.add('show');
+  document.getElementById('uploadZone').style.display = 'none';
+}
+
+function clearFile() {
+  parsedChatText = '';
+  document.getElementById('filePreview').classList.remove('show');
+  document.getElementById('uploadZone').style.display = 'block';
+  document.getElementById('fileInput').value = '';
+  updateCharCount();
+}
+
+function updateCharCount() {
+  const text = currentMode === 'text' ? document.getElementById('chatInput').value : parsedChatText;
+  document.getElementById('charCount').textContent = text.length + ' 字';
+}
+
+document.getElementById('chatInput').addEventListener('input', updateCharCount);
+
+function clearAll() {
+  document.getElementById('chatInput').value = '';
+  parsedChatText = '';
+  clearFile();
+  updateCharCount();
+  resetResult();
+}
+
+function resetResult() {
+  document.getElementById('result').classList.remove('show');
+  document.getElementById('errorCard').classList.remove('show');
+  document.getElementById('loading').classList.remove('show');
+}
+
+function showError(msg) {
+  const el = document.getElementById('errorCard');
+  el.textContent = msg;
+  el.classList.add('show');
+}
+
+const loadingSteps = ['识别销售跟进动作…','分析用户顾虑类型…','判断销售有没有接住…','生成同步话术…'];
+let stepTimer;
+function startLoading() {
+  let i = 0;
+  const el = document.getElementById('loadingStep');
+  el.textContent = loadingSteps[0];
+  stepTimer = setInterval(() => { i = (i+1)%loadingSteps.length; el.textContent = loadingSteps[i]; }, 1800);
+}
+function stopLoading() { clearInterval(stepTimer); }
+
+const WORRY_LABELS = { worth_it:'值不值', no_result:'怕没结果', family:'说服不了家人', competitor:'在对比竞品', unknown:'未浮出' };
+const WORRY_TAG = { worth_it:'tag-orange', no_result:'tag-red', family:'tag-blue', competitor:'tag-purple', unknown:'tag-gray' };
+
+async function analyze() {
+  const text = currentMode === 'text' ? document.getElementById('chatInput').value.trim() : parsedChatText.trim();
+  if (!text) { alert('请先粘贴聊天记录或上传文件'); return; }
+  if (text.length < 30) { alert('聊天记录太短，请粘贴完整记录'); return; }
+
+  resetResult();
+  document.getElementById('loading').classList.add('show');
+  document.getElementById('analyzeBtn').disabled = true;
+  startLoading();
+
+  const prompt = `你是DBC职梦新媒体视频组的追单诊断助手。请分析以下销售与用户的聊天记录，按三步框架输出诊断结论。
+
+【三步诊断框架】
+
+第一步：销售做了没有
+- 检查项1：承诺的事有没有做到（约了电话有没有打、说明天联系有没有联系）
+- 检查项2：用户沉默超过3天，销售有没有主动跟进
+
+第二步：用户卡在哪
+识别用户顾虑，归入：
+- worth_it：值不值（"价格有点高""考虑一下""和孩子商量"）
+- no_result：怕没结果（"能保证吗""万一没拿到""之前试过没效果"）
+- family：说服不了家人（"孩子不愿意""我先生不同意""父母觉得没必要"）
+- competitor：在对比竞品（"孩子在看别家""我们在比较一下"）
+- unknown：顾虑未浮出
+
+第三步：销售有没有接住
+判断销售的回应有没有直接回应用户的那个顾虑（不是看销售说了什么，是看有没有回应到同一件事）。
+
+注意：[图片][表情][文件][语音]是非文字消息占位符，忽略内容，只看时间节点。
+
+请严格按以下JSON格式输出，不要输出任何其他内容：
+{
+  "step1": {
+    "promise_kept": true或false,
+    "promise_detail": "承诺了什么、有没有做，一句话",
+    "followup_ok": true或false,
+    "followup_detail": "沉默情况说明，一句话",
+    "overall": "ok"或"warn",
+    "summary": "第一步总结，一句话"
+  },
+  "step2": {
+    "worry_type": "worth_it/no_result/family/competitor/unknown",
+    "worry_quote": "用户原话中最能体现顾虑的那句话",
+    "worry_context": "这个顾虑的背景补充，一句话"
+  },
+  "step3": {
+    "caught": true或false,
+    "caught_detail": "销售回应了什么，有没有针对顾虑，一句话",
+    "overall": "ok"或"warn"或"neutral",
+    "summary": "第三步总结，一句话"
+  },
+  "action_needed": true或false,
+  "action_text": "如需同步销售：'XX（用户昵称）X月X日说了「顾虑原话」，之后沉默了N天，你这边方便跟一下吗？' 不需要则留空",
+  "ledger": {
+    "用户昵称": "从记录提取",
+    "销售姓名": "从记录提取",
+    "当前状态": "一句话描述现状",
+    "顾虑类型": "中文顾虑类型",
+    "用户原话": "最能体现顾虑的原话",
+    "销售接住了吗": "接住了/没接住/顾虑未浮出",
+    "沉默天数": "大约几天或不明确",
+    "下一步": "需要同步销售/正常等待/顾虑未浮出需销售先挖"
+  }
+}
+
+聊天记录如下：
+${text.slice(0, 8000)}`;
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:1000, messages:[{role:'user',content:prompt}] })
+    });
+    const data = await response.json();
+    stopLoading();
+    document.getElementById('loading').classList.remove('show');
+    document.getElementById('analyzeBtn').disabled = false;
+
+    if (!response.ok || !data.content?.[0]) throw new Error(data.error?.message || '请求失败');
+
+    let raw = data.content[0].text.trim().replace(/```json|```/g,'').trim();
+    const result = JSON.parse(raw);
+    renderResult(result);
+  } catch(e) {
+    stopLoading();
+    document.getElementById('loading').classList.remove('show');
+    document.getElementById('analyzeBtn').disabled = false;
+    showError('诊断失败：' + e.message + '。请检查记录格式后重试。');
+  }
+}
+
+function renderResult(r) {
+  const stepCards = document.getElementById('stepCards');
+  stepCards.innerHTML = '';
+
+  const s1 = r.step1, s1ok = s1.overall === 'ok';
+  stepCards.innerHTML += `<div class="step-card">
+    <div class="step-card-header">
+      <div class="step-num" style="background:${s1ok?'var(--green-bg)':'var(--red-bg)'};color:${s1ok?'var(--green)':'var(--red)'}">1</div>
+      <span class="step-card-title">销售做了没有</span>
+      <span class="verdict ${s1ok?'verdict-ok':'verdict-warn'}">${s1ok?'✓ 正常':'✗ 有问题'}</span>
+    </div>
+    <div class="step-card-body">
+      <div class="detail-row"><span class="detail-label">承诺兑现</span><span class="detail-value">${s1.promise_detail}</span></div>
+      <div class="detail-row"><span class="detail-label">超时跟进</span><span class="detail-value">${s1.followup_detail}</span></div>
+      <div class="detail-row"><span class="detail-label">总结</span><span class="detail-value" style="font-weight:500">${s1.summary}</span></div>
+    </div></div>`;
+
+  const s2 = r.step2, wLabel = WORRY_LABELS[s2.worry_type]||s2.worry_type, wTag = WORRY_TAG[s2.worry_type]||'tag-gray';
+  stepCards.innerHTML += `<div class="step-card">
+    <div class="step-card-header">
+      <div class="step-num" style="background:var(--orange-bg);color:var(--orange)">2</div>
+      <span class="step-card-title">用户卡在哪</span>
+      <span class="tag ${wTag}">${wLabel}</span>
+    </div>
+    <div class="step-card-body">
+      <div class="detail-row"><span class="detail-label">顾虑类型</span><span class="detail-value"><span class="tag ${wTag}">${wLabel}</span></span></div>
+      ${s2.worry_quote?`<div class="detail-row"><span class="detail-label">用户原话</span><span class="detail-value"><div class="quote">「${s2.worry_quote}」</div></span></div>`:''}
+      <div class="detail-row"><span class="detail-label">背景</span><span class="detail-value">${s2.worry_context}</span></div>
+    </div></div>`;
+
+  const s3 = r.step3, s3ok = s3.overall==='ok', s3neutral = s3.overall==='neutral';
+  const s3vc = s3ok?'verdict-ok':s3neutral?'verdict-neutral':'verdict-warn';
+  const s3vt = s3ok?'✓ 接住了':s3neutral?'— 顾虑未浮出':'✗ 没接住';
+  stepCards.innerHTML += `<div class="step-card">
+    <div class="step-card-header">
+      <div class="step-num" style="background:var(--green-bg);color:var(--green)">3</div>
+      <span class="step-card-title">销售有没有接住</span>
+      <span class="verdict ${s3vc}">${s3vt}</span>
+    </div>
+    <div class="step-card-body">
+      <div class="detail-row"><span class="detail-label">销售回应</span><span class="detail-value">${s3.caught_detail}</span></div>
+      <div class="detail-row"><span class="detail-label">总结</span><span class="detail-value" style="font-weight:500">${s3.summary}</span></div>
+    </div></div>`;
+
+  const ac = document.getElementById('actionCard');
+  if (r.action_needed && r.action_text) { document.getElementById('actionText').textContent = r.action_text; ac.style.display='block'; }
+  else ac.style.display='none';
+
+  const lc = document.getElementById('ledgerCard'), lg = document.getElementById('ledgerGrid');
+  if (r.ledger) {
+    lg.innerHTML = Object.entries(r.ledger).map(([k,v])=>`<div class="ledger-cell"><div class="ledger-key">${k}</div><div class="ledger-val">${v||'—'}</div></div>`).join('');
+    lc.style.display='block';
+  }
+
+  document.getElementById('result').classList.add('show');
+  document.getElementById('result').scrollIntoView({behavior:'smooth',block:'start'});
+  window._currentResult = r;
+}
+
+function copyAction() { navigator.clipboard.writeText(document.getElementById('actionText').textContent).then(()=>showToast('话术已复制')); }
+function copyLedger() {
+  const r = window._currentResult?.ledger;
+  if (!r) return;
+  navigator.clipboard.writeText(Object.entries(r).map(([k,v])=>`${k}：${v}`).join('\n')).then(()=>showToast('台账已复制'));
+}
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2000);
+}
+</script>
+</body>
+</html>
